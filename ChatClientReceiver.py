@@ -9,7 +9,7 @@ receiver_socket.bind(MY_ADDRESS_PORT)
 
 f = open("received.txt", 'wb')
 
-receiver_socket.sendto("NAME receiver", SERVER_ADDRESS_PORT)
+receiver_socket.sendto("NAME receiver".encode(), SERVER_ADDRESS_PORT)
 data, addr = receiver_socket.recvfrom(MAX_MSG_SIZE)
 print(data)
 
@@ -25,5 +25,5 @@ except socket.timeout:
     print("File Downloaded")
 
 
-receiver_socket.sendto("QUIT", SERVER_ADDRESS_PORT)
+receiver_socket.sendto("QUIT".encode(), SERVER_ADDRESS_PORT)
 receiver_socket.close()
