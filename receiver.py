@@ -34,26 +34,23 @@ if __name__ == '__main__':
 			break
 
 		random_number = random.random()
-		if probability < random_number:
 
-			print("Packet number", packet.sequence_number, "received")
+		print("Packet number", packet.sequence_number, "received")
 
-			if packet.sequence_number < window_first_index:
+		if packet.sequence_number < window_first_index:
+			send_ack(packet.sequence_number, server_address, server_socket)
+		else:
+			if packet.equal_checksums(packet.sequence_number, packet.header, packet.data):
+				if packet.sequence_number >= window_first_index and packet.sequence_number <= window_last_index:
+					if packet.sequence_number == window_first_index:
+						receive_buffer[window_first_index % window_size] = None
+						is_received[window_first_index % window_size] = False
+						window_first_index += 1
+						window_last_index += 1
+					elif not is_received[packet.sequence_number % window_size]:
+						receive_buffer[packet.sequence_number] = packet
+						is_received[packet.sequence_number % window_size] = True
+				print("Acknowledge sent for packet number", packet.sequence_number)
 				send_ack(packet.sequence_number, server_address, server_socket)
 			else:
-				if packet.equal_checksums(packet.sequence_number, packet.header, packet.data):
-					if packet.sequence_number >= window_first_index and packet.sequence_number <= window_last_index:
-						if packet.sequence_number == window_first_index:
-							receive_buffer[window_first_index % window_size] = None
-							is_received[window_first_index % window_size] = False
-							window_first_index += 1
-							window_last_index += 1
-						elif not is_received[packet.sequence_number % window_size]:
-							receive_buffer[packet.sequence_number] = packet
-							is_received[packet.sequence_number % window_size] = True
-					print("Acknowledge sent for packet number", packet.sequence_number)
-					send_ack(packet.sequence_number, server_address, server_socket)
-				else:
-					print("Different checksums")
-		else:
-			print("Packet number", packet.sequence_number, "lost")
+				print("Different checksums")
