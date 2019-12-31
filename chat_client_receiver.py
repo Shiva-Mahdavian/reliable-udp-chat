@@ -19,6 +19,7 @@ try:
         f.write(data)
         receiver_socket.settimeout(2)
         data, addr = receiver_socket.recvfrom(MAX_MSG_SIZE)
+        print(data)
 except socket.timeout:
     f.close()
     #
