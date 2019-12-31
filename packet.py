@@ -1,46 +1,45 @@
+from struct import pack, unpack
+from utils import BYTES_TO_BITS, ones_complement_not
+
+
 class Packet:
 
-	STATE_READY = (4, "Ready")
-	STATE_SENT = (5, "Sent")
-	STATE_ACKED = (10, "Acked")
-	STATE_RECEIVED = (13, "Received")
-	STATE_LOSS = (15, "Loss")
-	STATE_CORRUPT = (20, "Corrupt")
-	STATE_RESENT = (25, "Resent")
+	def __init__(self, sequence_number, checksum, header, data):
+		self.sequence_number = int(sequence_number)
+		self.checksum = int(checksum)
+		self.header = header
+		self.data = data
 
-
-	def __init__(self, sequence_number=0, acked=False, payload=[], length=1024, state=0, retransmits=0):
-		self.sequence_number = sequence_number
-		self.acked = acked
-		self.payload = payload
-		self.length = length
-		self.state = state
-
-
-	def set_sequence_number(self, sequence_number):
-		self.sequence_number = sequence_number
-
-
-	def set_acked(self, acked):
-		self.acked = acked
-
-
-	def set_payload(self, payload):
-		self.payload = payload
-
-
-	def get_payload(self):
-		return self.payload
-
-
-	def get_sequence_number(self):
-		return self.sequence_number
-
-
-	def get_acked(self):
-		return self.acked
-
+	def __init__(self, packed_packet):
+		unpacked_packet = unpack('IHH' + str(len(packed_packet.data) - 8) + 's', self.data)
+		self.sequence_number = unpacked_packet[0]
+		self.checksum = unpacked_packet[1]
+		self.header = unpacked_packet[2]
+		self.data = unpacked_packet[3]
 
 	def __str__(self):
-		return str(sequence_number) + ", " + str(self.state) + ", " + str(self.retransmits)
+		return str(self.sequence_number) + ", " + str(self.checksum) + ", " + str(self.header) + ", " + str(self.data)
+
+	def get_pack(self):
+		return pack('IHH' + str(len(self.data)) + 's', self.sequence_number,self.checksum, self.header, self.data)
+
+	def calculate_checksum(self):
+		packed_packet = self.get_pack()
+		return self.calculate_string_checksum(packed_packet)
+
+	def calculate_string_checksum(self, s):
+		if len(s) % 2 != 0:
+			s = s + str(0)
+		index = 0
+		ret = 0
+		while index < len(s):
+			tmp1 = ord(s[index]) * (1 << (BYTES_TO_BITS - 1)) + ord(s[index + 1])
+			tmp2 = ret + ones_complement_not(tmp1)
+			ret = (tmp2 % (1 << (BYTES_TO_BITS * 2 - 1))) + (tmp2 / (1 << (BYTES_TO_BITS * 2 - 1)))
+			index += 2
+		return ones_complement_not(ret)
+
+	def equal_checksums(self, sequence_number, header, data):
+		s = pack('IH' + str(len(data)) + 's', sequence_number, header, data)
+		return self.calculate_string_checksum(s)
 
