@@ -39,8 +39,7 @@ def timeouts_signal_handler(signal_number, _):
 	if acked_completed:
 		return
 
-	i = window_first_index
-	while i <= window_last_index:
+	for i in range(window_first_index, window_last_index + 1):
 		timeout_timers[i % WINDOW_SIZE] = timeout_timers[i % WINDOW_SIZE] - 1
 		lock.acquire()
 		if timeout_timers[i % WINDOW_SIZE] < 1 and send_buffer[i % WINDOW_SIZE] != None:
@@ -49,7 +48,6 @@ def timeouts_signal_handler(signal_number, _):
 			client_socket.sendto(packet, (HOST_IP, HOST_PORT))
 			timeout_timers[i % WINDOW_SIZE] = TIMEOUT
 		lock.release()
-		i = i + 1
 
 
 def look_for_acks():
