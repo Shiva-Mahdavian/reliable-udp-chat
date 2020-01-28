@@ -1,79 +1,131 @@
-class Sender:
-
-	MAXIMUM_QUEUE_LENGTH = 100000
-	PACKET_SIZE = 512
-	ACK = 1
-	NAK = 0
-
-	def __init__(self, window_size=0, timeout=0, receive_port=0, send_port=0):
-		self.max_window_size = window_size
-		self.timeout = timeout
-		self.windows = [0] * self.max_window_size
-		# TODO:
-		socket = DatagramSocket(receive_port)
-		self.windows_list = []
-		self.receive_port = receive_port
-		self.send_port = send_port
-
-		self.window_size = 0
-		self.sequence_number = 0
-		self.is_block = False
-		self.queue = []
-		self.queue_index = 0
-		# TODO:
-		self.timeout_timer = Timer()
-		self.number_of_timeouts = 0
-		self.max_window_size = 0
-		self.receive_port = 0
-		self.send_port = 0
-
-		self.log = {}
+import sys
+import random
+import signal
+import threading
+import socket
+from struct import *
+from utils import calculate_string_checksum, ZERO_ONE_INT, ALL_ZEROS_INT, ALL_ONES_INT, PACKETS_COUNT, MAXIMUM_SEGMENT_SIZE
 
 
-	def push_to_queue(buf):
-		try:
-			# TODO:
-			packet = Packet(self.sequence_number, buf.bytes(), Packet.STATE_READY)
-			self.sequence_number += 1
-			queue.append(packet)
-			self.write(packet.get_sequence_number(), Packet.STATE_READY)
-		except:
-			pass
+message = "Hello World!" * PACKETS_COUNT
+
+sequence_number = 0
+window_first_index = -1
+window_last_index = -1
+last_acked = -1
+acked_count = -1
+
+send_completed = False
+acked_completed = False
+
+send_buffer = []
+timeout_timers = []
+
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+lock = threading.Lock()
 
 
-	def write(sequence_number, state):
-		if sequence_number in log.keys():
-			log.append(state)
-		else:
-			log[sequence_number] = [state]
+def get_message_string_next_byte():
+	global send_completed
+	global message
+	if message:
+		ret = message[0]
+		message = message[1:len(message)]
+	else:
+		ret = ""
+		send_completed = True
+	return ret
 
 
-	def send_data(self):
-		self.is_block = True
-		self.number_of_timeouts = 0
-		self.packet_data = [0] * self.PACKET_SIZE
-		self.timeout_timer = Timer(True)
-		self.window_size = 0
-		while True:
-			while (not self.queue or len(self.queue) == 0) and self.window_size == 0:
-				self.is_block = False
-			if self.window_size == 0:
-				self.is_block = True
-				self.window_size = min(len(self.queue), self.max_window_size)
-				self.windows = [self.NAK] * self.window_size
-				for i in range(self.window_size):
-					packet = self.queue[self.queue_index]
-					packet.state = Packet.STATE_SENT
-					windows_list.append(packet)
-					self.write(packet.get_sequence_number(), Packet.STATE_SENT)
-					self.send_packet(packet)
-			else:
-				self.is_block = True
-				empty_space = self.adjust_window()
-				new_windows = [0] * self.window_size
-				ping = 0
-				windows_list = windows_list[empty_space:]
-				for i in range(empty_space, self.window_size):
-					new_windows[ping] = windows[i]
-					ping += 1
-				
+def get_next_message_segment():
+	global send_completed
+	message = ''
+	while len(message) < MAXIMUM_SEGMENT_SIZE and not send_completed:
+		message += get_message_string_next_byte(message)
+	return message
+
+
+def timeouts_signal_handler(signal_number, _):
+	global window_first_index
+	global window_last_index
+	global send_buffer
+	global lock
+	global timeout_timers
+	global WINDOW_SIZE
+
+	if acked_completed:
+		return
+
+	i = window_first_index
+	while i <= window_last_index:
+		timeout_timers[i % WINDOW_SIZE] = timeout_timers[i % WINDOW_SIZE] - 1
+		lock.acquire()
+		if timeout_timers[i % WINDOW_SIZE] < 1 and send_buffer[i % WINDOW_SIZE] != None:
+			packet = send_buffer[i % WINDOW_SIZE]
+			print("Timeout, esending packet #" + str(i))
+			client_socket.sendto(packet, (HOST_IP, HOST_PORT))
+			timeout_timers[i % WINDOW_SIZE] = TIMEOUT
+		lock.release()
+		i = i + 1
+
+
+def look_for_acks():
+	global window_first_index
+	global send_buffer
+	global WINDOW_SIZE
+	global client_socket
+	global acked_count
+	global acked_completed
+	global send_completed
+	global window_last_index
+
+	while not acked_completed:
+		packet, addr = client_socket.recvfrom(8)
+		ack_number = packet.sequence_number
+		print("Received ACK #" + str(ack_number))
+		if ack_number == window_first_index:
+			lock.acquire()
+			send_buffer[window_first_index % WINDOW_SIZE] = None
+			timeout_timers[window_first_index % WINDOW_SIZE] = 0
+			lock.release()
+			acked_count = acked_count + 1
+			window_first_index = window_first_index + 1
+		elif ack_number >= window_first_index and ack_number <= window_last_index:
+			send_buffer[ack_number % WINDOW_SIZE] = None
+			timeout_timers[ack_number % WINDOW_SIZE] = 0
+			acked_count += 1
+		if send_completed and acked_count >= window_last_index:
+			acked_completed = True
+
+ack_thread = threading.Thread(target=look_for_acks, args=())
+ack_thread.start()
+
+signal.signal(signal.SIGALRM, timeouts_signal_handler)
+signal.setitimer(signal.ITIMER_REAL, 0.01, 0.01)
+
+window_first_index = 0
+
+while not send_completed:
+	send_index = window_last_index + 1
+	data = get_next_message_segment()
+	packet_checksum = calculate_string_checksum(pack('IH' + str(len(data)) + 's', sequence_number, ZERO_ONE_INT, data))
+
+	packet = Packet(sequence_number, packet_checksum, ZERO_ONE_INT, packet_data) 
+	if send_index < WINDOW_SIZE:
+		send_buffer.append(packet.get_pack())
+		timeout_timers.append(TIMEOUT)
+	else:
+		send_buffer[send_index % WINDOW_SIZE] = packet.get_pack()
+		timeout_timers[send_index % WINDOW_SIZE] = TIMEOUT
+
+	print("Sending #" + str(sequence_number))
+	client_socket.sendto(packet.get_pack(), (HOST_IP, HOST_PORT))
+
+	window_last_index = window_last_index + 1
+	sequence_number = sequence_number + 1
+
+while not acked_completed:
+	pass
+
+client_socket.sendto(Packet(sequence_number, ALL_ZEROS_INT, ALL_ONES_INT).get_pack(), (HOST_IP, HOST_PORT))
+client_socket.close()
