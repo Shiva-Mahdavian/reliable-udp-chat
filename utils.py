@@ -1,6 +1,8 @@
 HOST_IP = "127.0.0.1"
 HOST_PORT = 9797
 
+MESSAGES_COUNT = 10
+
 WINDOW_SIZE = 8
 TIMEOUT = 10
 MAXIMUM_SEGMENT_SIZE = 30
@@ -35,6 +37,6 @@ def calculate_string_checksum(s):
 	while index < len(s):
 		tmp1 = ord(s[index]) * (1 << (BYTES_TO_BITS - 1)) + ord(s[index + 1])
 		tmp2 = ret + ones_complement_not(tmp1)
-		ret = (tmp2 % (1 << (BYTES_TO_BITS * 2 - 1))) + (tmp2 / (1 << (BYTES_TO_BITS * 2 - 1)))
+		ret = (tmp2 % (1 << (BYTES_TO_BITS * 2 - 1))) + (tmp2 // (1 << (BYTES_TO_BITS * 2 - 1)))
 		index += 2
 	return ones_complement_not(ret)

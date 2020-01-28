@@ -3,11 +3,12 @@ import random
 import signal
 import threading
 import socket
-from struct import *
-from utils import calculate_string_checksum, ZERO_ONE_INT, ALL_ZEROS_INT, ALL_ONES_INT, PACKETS_COUNT, MAXIMUM_SEGMENT_SIZE
+from struct import pack
+from packet import Packet
+from utils import *
 
 
-message = "Hello World!" * PACKETS_COUNT
+message = "Hello World!" * MESSAGES_COUNT
 
 sequence_number = 0
 window_first_index = -1
@@ -41,7 +42,7 @@ def get_next_message_segment():
 	global send_completed
 	message = ''
 	while len(message) < MAXIMUM_SEGMENT_SIZE and not send_completed:
-		message += get_message_string_next_byte(message)
+		message += get_message_string_next_byte()
 	return message
 
 
@@ -62,7 +63,7 @@ def timeouts_signal_handler(signal_number, _):
 		lock.acquire()
 		if timeout_timers[i % WINDOW_SIZE] < 1 and send_buffer[i % WINDOW_SIZE] != None:
 			packet = send_buffer[i % WINDOW_SIZE]
-			print("Timeout, esending packet #" + str(i))
+			print("Timeout, resending packet #" + str(i))
 			client_socket.sendto(packet, (HOST_IP, HOST_PORT))
 			timeout_timers[i % WINDOW_SIZE] = TIMEOUT
 		lock.release()
@@ -80,7 +81,8 @@ def look_for_acks():
 	global window_last_index
 
 	while not acked_completed:
-		packet, addr = client_socket.recvfrom(8)
+		packed_packet, addr = client_socket.recvfrom(8)
+		packet = Packet(packed_packet)
 		ack_number = packet.sequence_number
 		print("Received ACK #" + str(ack_number))
 		if ack_number == window_first_index:
@@ -107,10 +109,15 @@ window_first_index = 0
 
 while not send_completed:
 	send_index = window_last_index + 1
-	data = get_next_message_segment()
-	packet_checksum = calculate_string_checksum(pack('IH' + str(len(data)) + 's', sequence_number, ZERO_ONE_INT, data))
+	packet_data = get_next_message_segment().encode()
+	packet_checksum = calculate_string_checksum(pack('IH' + str(len(packet_data)) + 's', sequence_number, ZERO_ONE_INT, packet_data).decode())
 
-	packet = Packet(sequence_number, packet_checksum, ZERO_ONE_INT, packet_data) 
+	packet = Packet()
+	packet.sequence_number = sequence_number
+	packet.checksum = int(packet_checksum)
+	packet.header = ZERO_ONE_INT
+	packet.data = packet_data
+
 	if send_index < WINDOW_SIZE:
 		send_buffer.append(packet.get_pack())
 		timeout_timers.append(TIMEOUT)
@@ -127,5 +134,11 @@ while not send_completed:
 while not acked_completed:
 	pass
 
-client_socket.sendto(Packet(sequence_number, ALL_ZEROS_INT, ALL_ONES_INT).get_pack(), (HOST_IP, HOST_PORT))
+close_packet = Packet()
+close_packet.sequence_number = sequence_number
+close_packet.checksum = ALL_ZEROS_INT
+close_packet.header = ALL_ONES_INT
+close_packet.data = "".encode()
+
+client_socket.sendto(close_packet.get_pack(), (HOST_IP, HOST_PORT))
 client_socket.close()
