@@ -1,20 +1,24 @@
-Reliable User Datagram Protocol (RUDP)
+# Reliable User Datagram Protocol (RUDP)
 
 Making a reliable UDP using Selective Repeat algorithm
 
-Usage
+## Usage
 
 First of all modify utils.py file to change host IP, host port and some other stuff.
 
-Starting server (use Python version 3):
+**Starting server (use Python version 3):**
 
-    python receiver.py
+```python
+python receiver.py
+```
 
-Starting client (use Python version 3):
+**Starting client (use Python version 3):**
 
-    python receiver.py
+```
+python receiver.py
+```
 
-Contributors
+## Contributors
 
 Shiva Mahdavian (https://github.com/Shiva-Mahdavian)
 
